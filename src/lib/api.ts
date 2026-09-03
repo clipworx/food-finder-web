@@ -1,6 +1,14 @@
 import { Locale } from "./i18n/translations";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000";
+// Empty by default: requests go through Next.js's own /api rewrite (see
+// next.config.ts) so the browser always calls same-origin, never the backend
+// directly — set NEXT_PUBLIC_API_URL only to bypass the proxy.
+const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "";
+
+function buildUrl(path: string): URL {
+  const base = API_URL || (typeof window !== "undefined" ? window.location.origin : "http://localhost:3000");
+  return new URL(path, base);
+}
 
 export interface ProductSummary {
   code: string;
@@ -24,45 +32,91 @@ export interface RecentSearch {
   createdAt: string;
 }
 
+export interface User {
+  id: string;
+  email: string;
+  subscriptionStatus: string;
+  hasActiveSubscription: boolean;
+}
+
 async function handle<T>(response: Response): Promise<T> {
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.error ?? `Request failed with status ${response.status}`);
   }
+  if (response.status === 204) return undefined as T;
   return response.json() as Promise<T>;
 }
 
-export async function searchProducts(query: string, locale: Locale) {
-  const url = new URL("/api/products/search", API_URL);
+function get(path: string): Promise<Response> {
+  return fetch(buildUrl(path).toString(), { credentials: "include" });
+}
+
+function postJson(path: string, body?: unknown): Promise<Response> {
+  return fetch(buildUrl(path).toString(), {
+    method: "POST",
+    credentials: "include",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+  });
+}
+
+export interface SearchResponse {
+  results: ProductSummary[];
+  page: number;
+  pageCount: number;
+  total: number;
+}
+
+export async function searchProducts(query: string, locale: Locale, page = 1) {
+  const url = buildUrl("/api/products/search");
   url.searchParams.set("q", query);
   url.searchParams.set("locale", locale);
-  const response = await fetch(url.toString());
-  return handle<{ results: ProductSummary[] }>(response);
+  url.searchParams.set("page", String(page));
+  const response = await fetch(url.toString(), { credentials: "include" });
+  return handle<SearchResponse>(response);
 }
 
 export async function getProduct(code: string, locale: Locale) {
-  const url = new URL(`/api/products/${encodeURIComponent(code)}`, API_URL);
+  const url = buildUrl(`/api/products/${encodeURIComponent(code)}`);
   url.searchParams.set("locale", locale);
-  const response = await fetch(url.toString());
+  const response = await fetch(url.toString(), { credentials: "include" });
   return handle<{ product: ProductDetail; hasNutritionAccess: boolean }>(response);
 }
 
 export async function getRecentSearches() {
-  const url = new URL("/api/searches/recent", API_URL);
-  const response = await fetch(url.toString());
-  return handle<{ searches: RecentSearch[] }>(response);
+  return handle<{ searches: RecentSearch[] }>(await get("/api/searches/recent"));
 }
 
 export async function getSubscriptionStatus() {
-  const url = new URL("/api/subscription/status", API_URL);
-  const response = await fetch(url.toString());
   return handle<{ status: string; active: boolean; currentPeriodEnd: string | null }>(
-    response
+    await get("/api/subscription/status")
+  );
+}
+
+export async function syncSubscriptionStatus() {
+  return handle<{ status: string; active: boolean; currentPeriodEnd: string | null }>(
+    await postJson("/api/subscription/sync")
   );
 }
 
 export async function createCheckoutSession() {
-  const url = new URL("/api/subscription/checkout", API_URL);
-  const response = await fetch(url.toString(), { method: "POST" });
-  return handle<{ url: string }>(response);
+  const origin = typeof window !== "undefined" ? window.location.origin : undefined;
+  return handle<{ url: string }>(await postJson("/api/subscription/checkout", { origin }));
+}
+
+export async function login(email: string, password: string) {
+  return handle<{ user: User }>(await postJson("/api/auth/login", { email, password }));
+}
+
+export async function register(email: string, password: string) {
+  return handle<{ user: User }>(await postJson("/api/auth/register", { email, password }));
+}
+
+export async function logout() {
+  return handle<void>(await postJson("/api/auth/logout"));
+}
+
+export async function getCurrentUser() {
+  return handle<{ user: User | null }>(await get("/api/auth/me"));
 }

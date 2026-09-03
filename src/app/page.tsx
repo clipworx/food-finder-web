@@ -1,7 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { LanguageSelector } from "@/components/LanguageSelector";
+import { CircleAlert, PackageSearch } from "lucide-react";
+import { Pagination } from "@/components/Pagination";
 import { ProductCard } from "@/components/ProductCard";
 import { RecentSearches } from "@/components/RecentSearches";
 import { SearchBar } from "@/components/SearchBar";
@@ -15,7 +16,11 @@ import {
 
 export default function HomePage() {
   const { locale, t } = useLocale();
+  const [query, setQuery] = useState("");
   const [results, setResults] = useState<ProductSummary[]>([]);
+  const [page, setPage] = useState(1);
+  const [pageCount, setPageCount] = useState(1);
+  const [total, setTotal] = useState(0);
   const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,44 +36,85 @@ export default function HomePage() {
     refreshRecentSearches();
   }, [refreshRecentSearches]);
 
-  async function handleSearch(query: string) {
+  async function runSearch(searchQuery: string, requestedPage: number) {
     setIsSearching(true);
     setError(null);
     setHasSearched(true);
     try {
-      const { results } = await searchProducts(query, locale);
+      const { results, page, pageCount, total } = await searchProducts(
+        searchQuery,
+        locale,
+        requestedPage
+      );
       setResults(results);
-      refreshRecentSearches();
+      setPage(page);
+      setPageCount(pageCount);
+      setTotal(total);
+      if (requestedPage === 1) refreshRecentSearches();
     } catch {
       setError(t("searchError"));
       setResults([]);
+      setPageCount(1);
+      setTotal(0);
     } finally {
       setIsSearching(false);
     }
   }
 
-  return (
-    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-6 px-4 py-8">
-      <header className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900">{t("appTitle")}</h1>
-        <LanguageSelector />
-      </header>
+  function handleSearch(searchQuery: string) {
+    setQuery(searchQuery);
+    runSearch(searchQuery, 1);
+  }
 
-      <section>
-        <SearchBar onSearch={handleSearch} isSearching={isSearching} />
-        <RecentSearches searches={recentSearches} onSelect={handleSearch} />
+  function handlePageChange(nextPage: number) {
+    runSearch(query, nextPage);
+  }
+
+  return (
+    <main className="mx-auto flex w-full max-w-6xl flex-1 flex-col gap-16 px-4 py-16 sm:px-6">
+      <section className="grid grid-cols-1 gap-8 lg:grid-cols-[3fr_2fr] lg:items-end">
+        <h1 className="font-display text-hero font-extralight leading-[0.95] text-foreground">
+          {t("appTitle")}
+        </h1>
+        <div className="rounded-lg border border-border bg-card p-6">
+          <SearchBar onSearch={handleSearch} isSearching={isSearching} />
+          <RecentSearches searches={recentSearches} onSelect={handleSearch} />
+        </div>
       </section>
 
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      <section className="flex flex-col gap-6">
+        {error && (
+          <p className="flex items-center gap-2 text-sm text-destructive">
+            <CircleAlert className="size-4" aria-hidden="true" />
+            {error}
+          </p>
+        )}
 
-      {!error && hasSearched && !isSearching && results.length === 0 && (
-        <p className="text-sm text-gray-500">{t("noResults")}</p>
-      )}
+        {!error && hasSearched && !isSearching && results.length === 0 && (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground">
+            <PackageSearch className="size-4" aria-hidden="true" />
+            {t("noResults")}
+          </p>
+        )}
 
-      <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {results.map((product) => (
-          <ProductCard key={product.code} product={product} />
-        ))}
+        {total > 0 && (
+          <p className="font-mono text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            {t("resultsCount").replace("{count}", String(total))}
+          </p>
+        )}
+
+        <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {results.map((product) => (
+            <ProductCard key={product.code} product={product} />
+          ))}
+        </div>
+
+        <Pagination
+          page={page}
+          pageCount={pageCount}
+          onPageChange={handlePageChange}
+          disabled={isSearching}
+        />
       </section>
     </main>
   );

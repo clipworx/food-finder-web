@@ -1,6 +1,9 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import { LoaderCircle, Search } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useLocale } from "@/lib/i18n/LocaleProvider";
 
 export function SearchBar({
@@ -21,20 +24,27 @@ export function SearchBar({
 
   return (
     <form onSubmit={handleSubmit} className="flex w-full gap-2">
-      <input
-        type="text"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder={t("searchPlaceholder")}
-        className="w-full rounded-md border border-gray-300 px-4 py-2 text-gray-900 focus:border-blue-500 focus:outline-none"
-      />
-      <button
-        type="submit"
-        disabled={isSearching || !value.trim()}
-        className="rounded-md bg-blue-600 px-4 py-2 font-medium text-white disabled:opacity-50"
-      >
+      <div className="relative flex-1">
+        <Search
+          className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground"
+          aria-hidden="true"
+        />
+        <Input
+          type="text"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+          placeholder={t("searchPlaceholder")}
+          className="pl-9 text-base"
+        />
+      </div>
+      <Button type="submit" size="lg" disabled={isSearching || !value.trim()}>
+        {isSearching ? (
+          <LoaderCircle className="size-4 animate-spin" aria-hidden="true" />
+        ) : (
+          <Search className="size-4" aria-hidden="true" />
+        )}
         {isSearching ? t("searching") : t("searchButton")}
-      </button>
+      </Button>
     </form>
   );
 }
